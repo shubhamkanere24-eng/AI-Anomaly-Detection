@@ -1,7 +1,7 @@
 import pandas as pd
 
 # Load dataset
-df = pd.read_csv("healthcare_data.csv")
+df = pd.read_csv("data/healthcare_data.csv")
 
 # 1. Dataset shape
 print("Dataset Shape:", df.shape)
