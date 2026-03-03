@@ -1,0 +1,1 @@
+sliding window mechanism is implemented to capture temporal dependencies in patient vitals. This enables detection of sustained anomalies instead of reacting to single noisy readings.
