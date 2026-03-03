@@ -1,0 +1,4 @@
+1. Heart rate shows high variability with extreme value 150 bpm.
+2. Blood pressure has outliers around 190.
+3. SpO2 minimum value 85 indicates abnormal case.
+4. Temperature max 40 suggests fever condition.
