@@ -6,6 +6,8 @@ producer = KafkaProducer(
     value_serializer=lambda v: json.dumps(v).encode('utf-8')
 )
 
+TOPIC = "patient_vitals"
+
 while True:
     vitals = {
         "patient_id": random.randint(1,5),
@@ -14,6 +16,7 @@ while True:
         "temperature": round(random.uniform(36.5,39.0),1),
         "timestamp": time.time()
     }
-    producer.send('patient-vitals', value=vitals)
+
+    producer.send(TOPIC, value=vitals)
     print(f"Produced: {vitals}")
     time.sleep(1)
