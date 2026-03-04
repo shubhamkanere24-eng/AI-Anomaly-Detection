@@ -1,0 +1,24 @@
+body {
+    background-color: #0b0c15;
+    color: #fff;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+.gradient-text {
+    background: linear-gradient(90deg, #7b2ff7, #2af598);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.kpi-card {
+    background-color: #161826;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(120, 120, 255, 0.3);
+}
+
+.btn-gradient {
+    background: linear-gradient(90deg, #7b2ff7, #2af598);
+    border: none;
+    color: #fff;
+}

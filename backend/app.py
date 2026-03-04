@@ -1,38 +1,33 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from collections import defaultdict
 import time
 
 app = Flask(__name__)
 
 # -------------------------------
-# In-memory storage for anomalies
+# In-memory storage
 # -------------------------------
 anomaly_logs = []  # All anomalies
 patient_history = defaultdict(list)  # Patient-wise anomalies
 
 # -------------------------------
-# Helper function to add anomaly
+# Helper function
 # -------------------------------
 def add_anomaly(anomaly):
-    """
-    Adds an anomaly to storage.
-    Expected keys in anomaly dict:
-    - patient_id, heart_rate, blood_pressure, temperature, timestamp
-    - anomaly_score, risk_score, explanations, primary_contributor
-    """
     anomaly_logs.append(anomaly)
     patient_history[anomaly["patient_id"]].append(anomaly)
 
 # -------------------------------
 # API Endpoints
 # -------------------------------
+@app.route("/")
+def index():
+    return render_template("dashboard.html")
 
-# 1️⃣ Fetch all anomalies
 @app.route("/anomalies", methods=["GET"])
 def get_anomalies():
     return jsonify(anomaly_logs), 200
 
-# 2️⃣ Fetch patient-specific history
 @app.route("/anomalies/<int:patient_id>", methods=["GET"])
 def get_patient_history(patient_id):
     history = patient_history.get(patient_id, [])
@@ -40,7 +35,6 @@ def get_patient_history(patient_id):
         return jsonify({"message": f"No anomalies found for patient {patient_id}"}), 404
     return jsonify(history), 200
 
-# 3️⃣ Fetch baseline vitals for a patient
 @app.route("/baseline_vitals/<int:patient_id>", methods=["GET"])
 def get_baseline_vitals(patient_id):
     history = patient_history.get(patient_id, [])
@@ -53,7 +47,6 @@ def get_baseline_vitals(patient_id):
     }
     return jsonify(baseline), 200
 
-# 4️⃣ POST endpoint to add anomaly (optional integration for consumer)
 @app.route("/add_anomaly", methods=["POST"])
 def post_anomaly():
     anomaly = request.get_json()
@@ -66,5 +59,5 @@ def post_anomaly():
 # Run Flask
 # -------------------------------
 if __name__ == "__main__":
-    print("Flask backend for AI Anomaly Detection running on http://127.0.0.1:5000")
+    print("Flask backend running on http://127.0.0.1:5000")
     app.run(host="0.0.0.0", port=5000, debug=True)

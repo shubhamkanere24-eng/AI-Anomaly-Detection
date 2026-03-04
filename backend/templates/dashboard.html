@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Healthcare Anomaly Monitoring</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container-fluid p-4">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1 class="gradient-text">AI Healthcare Anomaly Monitoring</h1>
+            <p class="text-muted">Real-time patient risk detection & analytics</p>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card kpi-card">
+                    <h5>Active Patients</h5>
+                    <p id="activePatients"><span class="text-success">●</span> 0 Active</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card">
+                    <h5>High Risk Alerts</h5>
+                    <p id="highRiskAlerts" class="text-danger">0 <small>% of total</small></p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card">
+                    <h5>Avg Anomaly Score</h5>
+                    <p id="avgAnomalyScore" class="text-info">0.00 <span>✓ Normal range</span></p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card kpi-card">
+                    <h5>Last Alert</h5>
+                    <p id="lastAlert">--:--:--</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Bar -->
+        <div class="d-flex align-items-center mb-4 gap-2">
+            <select id="patientFilter" class="form-select w-auto">
+                <option value="all">All Patients</option>
+                <option value="1">Patient P001</option>
+                <option value="2">Patient P002</option>
+                <option value="3">Patient P003</option>
+                <option value="4">Patient P004</option>
+                <option value="5">Patient P005</option>
+            </select>
+
+            <select id="timeframe" class="form-select w-auto">
+                <option value="1h">Last Hour</option>
+                <option value="6h">Last 6 Hours</option>
+                <option value="12h">Last 12 Hours</option>
+            </select>
+
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                <label class="form-check-label text-light" for="autoRefresh">Auto-refresh (10s)</label>
+            </div>
+
+            <button class="btn btn-gradient" id="refreshBtn">Refresh Data</button>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-4"><canvas id="severityDonut"></canvas></div>
+            <div class="col-md-8"><canvas id="anomalyTrend"></canvas></div>
+            <div class="col-md-4"><canvas id="heartRateChart"></canvas></div>
+            <div class="col-md-4"><canvas id="spo2Chart"></canvas></div>
+            <div class="col-md-4"><canvas id="tempChart"></canvas></div>
+            <div class="col-md-12"><canvas id="bpChart"></canvas></div>
+        </div>
+
+        <!-- Real-Time Table -->
+        <div class="table-responsive">
+            <table class="table table-dark table-striped" id="anomalyTable">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Patient ID</th>
+                        <th>Score</th>
+                        <th>Severity</th>
+                        <th>Heart Rate</th>
+                        <th>SpO₂</th>
+                        <th>Temperature</th>
+                        <th>Blood Pressure</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

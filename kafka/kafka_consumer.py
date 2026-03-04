@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import time
 
+import requests  # <-- Added for POSTing to Flask
+
 TOPIC = "patient_vitals"
 
 # -------------------------------
@@ -167,6 +169,9 @@ for message in consumer:
 
                 last_alert_time[patient_id] = current_time
 
+                # -------------------------------
+                # 1️⃣ Send Email
+                # -------------------------------
                 send_email_alert(
                     patient_id,
                     data,
@@ -176,6 +181,32 @@ for message in consumer:
                     primary_contributor
                 )
 
+                # -------------------------------
+                # 2️⃣ POST anomaly to Flask backend
+                # -------------------------------
+                anomaly_payload = {
+                    "patient_id": patient_id,
+                    "heart_rate": data['heart_rate'],
+                    "blood_pressure": data['blood_pressure'],
+                    "temperature": data['temperature'],
+                    "timestamp": data['timestamp'],
+                    "anomaly_score": anomaly_score,
+                    "risk_score": risk_score,
+                    "explanations": explanations,
+                    "primary_contributor": primary_contributor
+                }
+                try:
+                    requests.post(
+                        "http://127.0.0.1:5000/add_anomaly",
+                        json=anomaly_payload,
+                        timeout=2
+                    )
+                except Exception as e:
+                    print("❌ Failed to POST anomaly to Flask:", e)
+
+                # -------------------------------
+                # 3️⃣ Console logging
+                # -------------------------------
                 print("\n" + "="*50)
                 print("🚨 CRITICAL HEALTH ANOMALY DETECTED 🚨")
                 print("="*50)
