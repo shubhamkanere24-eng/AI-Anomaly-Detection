@@ -8,8 +8,9 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import time
-
-import requests  # <-- Added for POSTing to Flask
+import requests
+import psycopg2
+from psycopg2.extras import Json
 
 TOPIC = "patient_vitals"
 
@@ -23,6 +24,41 @@ SMTP_PASSWORD = "eef9162ee1a348"
 
 SENDER_EMAIL = "alert@hospital.com"
 RECEIVER_EMAIL = "doctor@hospital.com"
+
+# -------------------------------
+# PostgreSQL CONFIGURATION
+# -------------------------------
+DB_HOST = "localhost"
+DB_PORT = 5432
+DB_NAME = "ai_anomalies"
+DB_USER = "postgres"
+DB_PASSWORD = "$hubh@m123"
+
+# Connect to PostgreSQL
+try:
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
+    conn.autocommit = True
+    cursor = conn.cursor()
+    print("✅ Connected to PostgreSQL successfully")
+
+    # Create anomalies table if not exists
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS anomalies (
+            id SERIAL PRIMARY KEY,
+            timestamp TIMESTAMP,
+            patient_id TEXT,
+            severity REAL,
+            vital_signs JSONB
+        )
+    """)
+except Exception as e:
+    print("❌ PostgreSQL connection failed:", e)
 
 # -------------------------------
 # Connect to Kafka
@@ -50,14 +86,11 @@ WINDOW_SIZE = 30
 last_alert_time = {}
 ALERT_COOLDOWN = 60  # seconds
 
-
 # -------------------------------
 # EMAIL FUNCTION
 # -------------------------------
 def send_email_alert(patient_id, data, anomaly_score, risk_score, explanations, primary_contributor):
-
     subject = "🚨 Critical Health Anomaly Detected"
-
     body = f"""
 CRITICAL HEALTH ALERT
 
@@ -79,7 +112,6 @@ Primary Contributor:
 
 Immediate medical attention recommended.
 """
-
     msg = MIMEMultipart()
     msg["From"] = SENDER_EMAIL
     msg["To"] = RECEIVER_EMAIL
@@ -95,7 +127,6 @@ Immediate medical attention recommended.
         print("📧 Email alert sent successfully (Mailtrap)")
     except Exception as e:
         print("❌ Email failed:", e)
-
 
 # -------------------------------
 # MAIN CONSUMER LOOP
@@ -137,27 +168,24 @@ for message in consumer:
         ]]
 
         prediction = model.predict(current_values)
-        anomaly_score = model.decision_function(current_values)[0]
+        anomaly_score = float(model.decision_function(current_values)[0])  # Convert np.float64 to float
 
         if prediction[0] == -1:
 
             explanations = []
-
             if data['heart_rate'] > 110:
                 explanations.append("High Heart Rate")
-
             if data['temperature'] > 38:
                 explanations.append("High Body Temperature")
-
             if data['blood_pressure'] > 140:
                 explanations.append("High Blood Pressure")
 
-            risk_score = abs(anomaly_score) * 100
+            risk_score = float(abs(anomaly_score) * 100)  # Convert np.float64 to float
 
             vitals_dict = {
-                "Heart Rate": data['heart_rate'],
-                "Blood Pressure": data['blood_pressure'],
-                "Temperature": data['temperature']
+                "Heart Rate": float(data['heart_rate']),
+                "Blood Pressure": float(data['blood_pressure']),
+                "Temperature": float(data['temperature'])
             }
 
             primary_contributor = max(vitals_dict, key=vitals_dict.get)
@@ -169,9 +197,7 @@ for message in consumer:
 
                 last_alert_time[patient_id] = current_time
 
-                # -------------------------------
                 # 1️⃣ Send Email
-                # -------------------------------
                 send_email_alert(
                     patient_id,
                     data,
@@ -181,15 +207,13 @@ for message in consumer:
                     primary_contributor
                 )
 
-                # -------------------------------
                 # 2️⃣ POST anomaly to Flask backend
-                # -------------------------------
                 anomaly_payload = {
                     "patient_id": patient_id,
-                    "heart_rate": data['heart_rate'],
-                    "blood_pressure": data['blood_pressure'],
-                    "temperature": data['temperature'],
-                    "timestamp": data['timestamp'],
+                    "heart_rate": float(data['heart_rate']),
+                    "blood_pressure": float(data['blood_pressure']),
+                    "temperature": float(data['temperature']),
+                    "timestamp": float(data['timestamp']),
                     "anomaly_score": anomaly_score,
                     "risk_score": risk_score,
                     "explanations": explanations,
@@ -204,28 +228,37 @@ for message in consumer:
                 except Exception as e:
                     print("❌ Failed to POST anomaly to Flask:", e)
 
-                # -------------------------------
-                # 3️⃣ Console logging
-                # -------------------------------
+                # 3️⃣ Insert anomaly into PostgreSQL (all values converted to native types)
+                try:
+                    cursor.execute("""
+                        INSERT INTO anomalies (timestamp, patient_id, severity, vital_signs)
+                        VALUES (to_timestamp(%s), %s, %s, %s)
+                    """, (
+                        float(data['timestamp']),
+                        str(patient_id),
+                        risk_score,
+                        Json(vitals_dict)
+                    ))
+                    print("💾 Anomaly inserted into PostgreSQL")
+                except Exception as e:
+                    print("❌ Failed to insert anomaly into PostgreSQL:", e)
+
+                # 4️⃣ Console logging
                 print("\n" + "="*50)
                 print("🚨 CRITICAL HEALTH ANOMALY DETECTED 🚨")
                 print("="*50)
                 print(f"Patient ID      : {patient_id}")
                 print(f"Anomaly Score   : {anomaly_score:.4f}")
                 print(f"Risk Score      : {risk_score:.2f}%")
-
                 print("\nAbnormal Factors:")
                 if explanations:
                     for exp in explanations:
                         print(f" - {exp}")
                 else:
                     print(" - Model detected anomaly pattern")
-
                 print(f"\nPrimary Contributor: {primary_contributor}")
                 print("="*50 + "\n")
-
             else:
                 print("⚠ Cooldown active. Email not sent.")
-
         else:
             print(f"✅ Patient {patient_id} is Normal.")
