@@ -4,3 +4,11 @@ The system ingests real-time patient vitals such as heart rate, oxygen saturatio
 
 Detected anomalies are stored in a PostgreSQL database, visualized on an interactive Flask-based dashboard, and critical alerts automatically trigger email notifications to healthcare administrators. The project demonstrates the practical application of machine learning, real-time data streaming, backend APIs, and dashboard visualization in solving real-world healthcare monitoring challenges.
 
+TO START THE PROJECT FOLLOW THE STEPS:-
+1:- RUN THE app.py FILE IN THE PROJECT IT WILL START YOUR BACKEND SERVER
+2:- YOUR KAFKA BROKER SHOULD RUN PARALLEL IN ANOTHER TERMINAL (CMD)
+3:- RUN THE kafka_producer.py file
+4:- RUN THE kafka_consumer.py file
+5:- Now open web browser and type the url http://127.0.0.1:5000/
+6:- THE Project will start and live anomaly detection dashboard will appear 
+
