@@ -2,7 +2,6 @@ flask
 flask-cors
 kafka-python
 psycopg2
-tensorflow
 scikit-learn
 pandas
 numpy
