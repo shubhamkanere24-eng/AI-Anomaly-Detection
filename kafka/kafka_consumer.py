@@ -20,15 +20,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TOPIC = os.getenv("KAFKA_TOPIC")
+KAFKA_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_GROUP = os.getenv("KAFKA_GROUP")
+FLASK_API_URL = os.getenv("FLASK_API_URL")
 
 # -------------------------------
 # MAILTRAP SMTP CONFIGURATION
 # -------------------------------
 SMTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = int(os.getenv("SMTP_PORT"))
+SMTP_PORT = int(os.getenv("SMTP_PORT", 2525))
 SMTP_USERNAME = os.getenv("SMTP_USERNAME")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
@@ -41,6 +43,8 @@ DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
+cursor = None  # safe initialization
+
 # -------------------------------
 # Connect to PostgreSQL
 # -------------------------------
@@ -52,10 +56,8 @@ try:
         user=DB_USER,
         password=DB_PASSWORD
     )
-
     conn.autocommit = True
     cursor = conn.cursor()
-
     print("✅ Connected to PostgreSQL successfully")
 
     cursor.execute("""
@@ -76,10 +78,10 @@ except Exception as e:
 # -------------------------------
 consumer = KafkaConsumer(
     TOPIC,
-    bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS"),
+    bootstrap_servers=KAFKA_SERVERS,
     auto_offset_reset='earliest',
     enable_auto_commit=True,
-    group_id=os.getenv("KAFKA_GROUP"),
+    group_id=KAFKA_GROUP,
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
 
@@ -90,7 +92,6 @@ print("Consumer started and listening...\n")
 # -------------------------------
 patient_buffers = defaultdict(list)
 patient_models = {}
-
 WINDOW_SIZE = 30
 
 # Cooldown Logic
@@ -101,14 +102,12 @@ ALERT_COOLDOWN = 60
 # EMAIL FUNCTION
 # -------------------------------
 def send_email_alert(patient_id, data, anomaly_score, risk_score, explanations, primary_contributor):
-
-    subject = "🚨 Critical Health Anomaly Detected"
-
-    body = f"""
+    try:
+        subject = "🚨 Critical Health Anomaly Detected"
+        body = f"""
 CRITICAL HEALTH ALERT
 
 Patient ID: {patient_id}
-
 Anomaly Score: {anomaly_score:.4f}
 Risk Score: {risk_score:.2f}%
 
@@ -125,26 +124,18 @@ Primary Contributor:
 
 Immediate medical attention recommended.
 """
+        msg = MIMEMultipart()
+        msg["From"] = SENDER_EMAIL
+        msg["To"] = RECEIVER_EMAIL
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
 
-    msg = MIMEMultipart()
-    msg["From"] = SENDER_EMAIL
-    msg["To"] = RECEIVER_EMAIL
-    msg["Subject"] = subject
-
-    msg.attach(MIMEText(body, "plain"))
-
-    try:
         server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-
         server.starttls()
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
-
         server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, msg.as_string())
-
         server.quit()
-
         print("📧 Email alert sent successfully")
-
     except Exception as e:
         print("❌ Email failed:", e)
 
@@ -152,7 +143,6 @@ Immediate medical attention recommended.
 # MAIN CONSUMER LOOP
 # -------------------------------
 for message in consumer:
-
     data = message.value
     patient_id = data['patient_id']
 
@@ -163,7 +153,6 @@ for message in consumer:
         data['blood_pressure'],
         data['temperature']
     ])
-
     if len(patient_buffers[patient_id]) > WINDOW_SIZE:
         patient_buffers[patient_id].pop(0)
 
@@ -173,140 +162,84 @@ for message in consumer:
     )
 
     if patient_id not in patient_models:
-
         patient_models[patient_id] = IsolationForest(
             contamination=0.1,
             random_state=42
         )
 
     if len(df) >= 10:
-
         model = patient_models[patient_id]
-
         model.fit(df)
-
         current_values = [[
             data['heart_rate'],
             data['blood_pressure'],
             data['temperature']
         ]]
-
         prediction = model.predict(current_values)
-
         anomaly_score = float(model.decision_function(current_values)[0])
 
         if prediction[0] == -1:
-
             explanations = []
-
             if data['heart_rate'] > 110:
                 explanations.append("High Heart Rate")
-
             if data['temperature'] > 38:
                 explanations.append("High Body Temperature")
-
             if data['blood_pressure'] > 140:
                 explanations.append("High Blood Pressure")
 
             risk_score = float(abs(anomaly_score) * 100)
-
             vitals_dict = {
                 "Heart Rate": float(data['heart_rate']),
                 "Blood Pressure": float(data['blood_pressure']),
                 "Temperature": float(data['temperature'])
             }
-
             primary_contributor = max(vitals_dict, key=vitals_dict.get)
-
             current_time = time.time()
 
             if patient_id not in last_alert_time or \
                (current_time - last_alert_time[patient_id]) > ALERT_COOLDOWN:
-
                 last_alert_time[patient_id] = current_time
 
                 # 1️⃣ EMAIL ALERT
-                send_email_alert(
-                    patient_id,
-                    data,
-                    anomaly_score,
-                    risk_score,
-                    explanations,
-                    primary_contributor
-                )
+                send_email_alert(patient_id, data, anomaly_score, risk_score, explanations, primary_contributor)
 
                 # 2️⃣ SEND TO FLASK
-                anomaly_payload = {
-                    "patient_id": patient_id,
-                    "heart_rate": float(data['heart_rate']),
-                    "blood_pressure": float(data['blood_pressure']),
-                    "temperature": float(data['temperature']),
-                    "timestamp": float(data['timestamp']),
-                    "anomaly_score": anomaly_score,
-                    "risk_score": risk_score,
-                    "explanations": explanations,
-                    "primary_contributor": primary_contributor
-                }
-
-                try:
-
-                    requests.post(
-                        f"{os.getenv('FLASK_API_URL')}/add_anomaly",
-                        json=anomaly_payload,
-                        timeout=2
-                    )
-
-                except Exception as e:
-
-                    print("❌ Failed to POST anomaly to Flask:", e)
+                if FLASK_API_URL:
+                    anomaly_payload = {
+                        "patient_id": patient_id,
+                        "heart_rate": float(data['heart_rate']),
+                        "blood_pressure": float(data['blood_pressure']),
+                        "temperature": float(data['temperature']),
+                        "timestamp": float(data['timestamp']),
+                        "anomaly_score": anomaly_score,
+                        "risk_score": risk_score,
+                        "explanations": explanations,
+                        "primary_contributor": primary_contributor
+                    }
+                    try:
+                        requests.post(f"{FLASK_API_URL}/add_anomaly", json=anomaly_payload, timeout=5)
+                    except Exception as e:
+                        print("❌ Failed to POST anomaly to Flask:", e)
 
                 # 3️⃣ STORE IN POSTGRESQL
-                try:
-
-                    cursor.execute("""
-                        INSERT INTO anomalies (timestamp, patient_id, severity, vital_signs)
-                        VALUES (to_timestamp(%s), %s, %s, %s)
-                    """, (
-                        float(data['timestamp']),
-                        str(patient_id),
-                        risk_score,
-                        Json(vitals_dict)
-                    ))
-
-                    print("💾 Anomaly inserted into PostgreSQL")
-
-                except Exception as e:
-
-                    print("❌ Failed to insert anomaly:", e)
-
-                # 4️⃣ LOG
-                print("\n" + "="*50)
-                print("🚨 CRITICAL HEALTH ANOMALY DETECTED 🚨")
-                print("="*50)
-
-                print(f"Patient ID      : {patient_id}")
-                print(f"Anomaly Score   : {anomaly_score:.4f}")
-                print(f"Risk Score      : {risk_score:.2f}%")
-
-                print("\nAbnormal Factors:")
-
-                if explanations:
-
-                    for exp in explanations:
-                        print(f" - {exp}")
-
+                if cursor:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO anomalies (timestamp, patient_id, severity, vital_signs)
+                            VALUES (to_timestamp(%s), %s, %s, %s)
+                        """, (
+                            float(data['timestamp']),
+                            str(patient_id),
+                            risk_score,
+                            Json(vitals_dict)
+                        ))
+                        print("💾 Anomaly inserted into PostgreSQL")
+                    except Exception as e:
+                        print("❌ Failed to insert anomaly:", e)
                 else:
-
-                    print(" - Model detected anomaly pattern")
-
-                print(f"\nPrimary Contributor: {primary_contributor}")
-
-                print("="*50 + "\n")
+                    print("⚠ PostgreSQL cursor not available, skipping insert.")
 
             else:
-
                 print("⚠ Cooldown active. Email not sent.")
-
         else:
-
             print(f"✅ Patient {patient_id} is Normal.")
